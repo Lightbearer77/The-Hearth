@@ -6,18 +6,16 @@ import {
   dayOfWeek,
   GOALS,
 } from '../constants.js';
-import { ASATRU_HOLIDAYS } from '../holidays.js';
+import { ASATRU_HOLIDAYS, remindersForDate } from '../holidays.js';
 import { eventsForDate } from '../storage.js';
 
 // Greek month grid:
-// - Regular month = 28 days, displayed as 4 rows of 7
-// - First column is the actual day-of-week the month starts on
-// - Days flow naturally so the grid is calendar-correct
+// - Regular month = 28 days, displayed in a calendar-aligned grid
+// - First column = the actual day-of-week the month starts on
 // - Planning Day = 1 cell (or 2 in leap years)
 export default function MonthView({ monthId, year, themeColor, events, onDayClick, today }) {
   const days = useMemo(() => greekMonthDays(monthId, year), [monthId, year]);
 
-  // For Planning Day, single-cell display
   if (monthId === 'PLANNING') {
     return (
       <div style={{ padding: '32px 16px' }}>
@@ -28,6 +26,7 @@ export default function MonthView({ monthId, year, themeColor, events, onDayClic
             events={eventsForDate(events, d)}
             isToday={d === today}
             themeColor={themeColor}
+            year={year}
             onClick={() => onDayClick(d)}
           />
         ))}
@@ -35,10 +34,8 @@ export default function MonthView({ monthId, year, themeColor, events, onDayClic
     );
   }
 
-  // Build cell rows, aligning to the day of week the month starts on
-  const startDow = dayOfWeek(days[0]); // 0=Sun..6=Sat
-  // We'll use Mon-Sun layout (Mon=0 in our display)
-  // Convert: 0(Sun)→6, 1(Mon)→0, 2(Tue)→1, ..., 6(Sat)→5
+  // Align to day-of-week the month starts on (Mon-first layout)
+  const startDow = dayOfWeek(days[0]);
   const dowToCol = (dow) => (dow + 6) % 7;
   const leadingBlanks = dowToCol(startDow);
 
@@ -46,7 +43,6 @@ export default function MonthView({ monthId, year, themeColor, events, onDayClic
     ...Array(leadingBlanks).fill(null),
     ...days,
   ];
-  // Pad trailing to fill complete rows
   while (cells.length % 7 !== 0) cells.push(null);
 
   return (
@@ -66,6 +62,7 @@ export default function MonthView({ monthId, year, themeColor, events, onDayClic
                 events={eventsForDate(events, iso)}
                 isToday={iso === today}
                 themeColor={themeColor}
+                year={year}
                 onClick={() => onDayClick(iso)}
               />
         ))}
@@ -100,13 +97,21 @@ function DayHeader() {
   );
 }
 
-function DayCell({ isoDate, events, isToday, themeColor, onClick }) {
+function DayCell({ isoDate, events, isToday, themeColor, year, onClick }) {
   const greek = gregToGreek(isoDate);
   const holidays = ASATRU_HOLIDAYS.filter(
     h => h.greekMonth === greek?.monthId && h.greekDay === greek?.day
   );
+  const reminders = remindersForDate(isoDate, year);
   const hasHoliday = holidays.length > 0;
-  const gregMonth = new Date(isoDate + 'T12:00:00').getDate();
+  const hasReminder = reminders.length > 0 && !hasHoliday;
+  const gregDay = new Date(isoDate + 'T12:00:00').getDate();
+
+  // Pick the "primary" holiday for symbol display (festival > remembrance)
+  const primaryHoliday = hasHoliday
+    ? (holidays.find(h => h.type !== 'remembrance') || holidays[0])
+    : null;
+  const isRemembrance = primaryHoliday?.type === 'remembrance';
 
   return (
     <button
@@ -126,7 +131,19 @@ function DayCell({ isoDate, events, isToday, themeColor, onClick }) {
         overflow: 'hidden',
       }}
     >
-      {/* Top row: Greek date prominent, Gregorian small */}
+      {/* Reminder indicator — small notch top-right when a reminder fires on this day */}
+      {hasReminder && (
+        <span style={{
+          position: 'absolute',
+          top: 3, right: 3,
+          width: 4, height: 4,
+          borderRadius: '50%',
+          background: 'var(--text-muted)',
+          opacity: 0.6,
+        }} />
+      )}
+
+      {/* Top row: Greek day prominent, Gregorian small */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -148,20 +165,30 @@ function DayCell({ isoDate, events, isToday, themeColor, onClick }) {
           color: 'var(--text-faint)',
           lineHeight: 1,
         }}>
-          {gregMonth}
+          {gregDay}
         </span>
       </div>
 
       {/* Holiday symbol */}
-      {hasHoliday && (
+      {primaryHoliday && (
         <div style={{
-          fontSize: 11,
-          color: themeColor,
+          fontSize: isRemembrance ? 13 : 11,
+          color: isRemembrance ? 'var(--text-secondary)' : themeColor,
           textAlign: 'center',
           marginTop: 2,
-          opacity: 0.85,
+          opacity: isRemembrance ? 0.75 : 0.9,
+          fontFamily: isRemembrance ? 'var(--font-mono)' : 'inherit',
+          letterSpacing: isRemembrance ? '0.05em' : 0,
         }}>
-          {holidays[0].symbol}
+          {primaryHoliday.symbol}
+          {holidays.length > 1 && (
+            <span style={{
+              fontSize: 7,
+              marginLeft: 2,
+              color: 'var(--text-faint)',
+              verticalAlign: 'top',
+            }}>+{holidays.length - 1}</span>
+          )}
         </div>
       )}
 
@@ -195,11 +222,13 @@ function DayCell({ isoDate, events, isToday, themeColor, onClick }) {
   );
 }
 
-function PlanningCell({ isoDate, events, isToday, themeColor, onClick }) {
+function PlanningCell({ isoDate, events, isToday, themeColor, year, onClick }) {
+  const reminders = remindersForDate(isoDate, year);
   return (
     <button
       onClick={onClick}
       style={{
+        position: 'relative',
         width: '100%',
         background: `linear-gradient(135deg, ${themeColor}15, transparent)`,
         border: `1px solid ${themeColor}`,
@@ -212,6 +241,16 @@ function PlanningCell({ isoDate, events, isToday, themeColor, onClick }) {
         marginBottom: 12,
       }}
     >
+      {reminders.length > 0 && (
+        <span style={{
+          position: 'absolute',
+          top: 8, right: 10,
+          width: 5, height: 5,
+          borderRadius: '50%',
+          background: 'var(--text-muted)',
+          opacity: 0.6,
+        }} />
+      )}
       <div style={{
         fontFamily: 'var(--font-display)',
         fontSize: 36,
