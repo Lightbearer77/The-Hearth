@@ -1,7 +1,22 @@
 import { fmtGreg } from '../constants.js';
+import { ASATRU_HOLIDAYS } from '../holidays.js';
 
-export default function SeasonalBanner({ meta, year, onPrev, onNext, onToday }) {
+export default function SeasonalBanner({ meta, year, viewMode, onSetViewMode, onPrev, onNext, onToday }) {
   const { name, letter, theme, range } = meta;
+
+  // Quick count of holidays/remembrance days in this Greek month (always the same, perpetual)
+  const monthId = name === 'Planning Day' ? 'PLANNING' : null;
+  // Resolve monthId from name if not Planning
+  let resolvedMonthId = monthId;
+  if (!resolvedMonthId) {
+    const matchMap = {
+      'Alpha':'M01','Beta':'M02','Gamma':'M03','Delta':'M04','Epsilon':'M05',
+      'Zeta':'M06','Eta':'M07','Theta':'M08','Iota':'M09','Kappa':'M10',
+      'Lambda':'M11','Mu':'M12','Nu':'M13',
+    };
+    resolvedMonthId = matchMap[name];
+  }
+  const holidayCount = ASATRU_HOLIDAYS.filter(h => h.greekMonth === resolvedMonthId).length;
 
   return (
     <header style={{
@@ -11,7 +26,6 @@ export default function SeasonalBanner({ meta, year, onPrev, onNext, onToday }) 
       background: `linear-gradient(180deg, ${theme.color}18 0%, transparent 100%)`,
       overflow: 'hidden',
     }}>
-      {/* Soft seasonal glow overlay */}
       <div style={{
         position: 'absolute',
         top: -40, left: '50%',
@@ -95,6 +109,43 @@ export default function SeasonalBanner({ meta, year, onPrev, onNext, onToday }) 
           letterSpacing: '0.1em',
         }}>
           {fmtGreg(range.start)} – {fmtGreg(range.end)} · {year}
+          {holidayCount > 0 && (
+            <span style={{ color: theme.color, opacity: 0.7, marginLeft: 8 }}>
+              · {holidayCount} marked
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* View toggle */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        marginTop: 14,
+        position: 'relative',
+      }}>
+        <div style={{
+          display: 'flex',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 4,
+          padding: 2,
+          gap: 2,
+        }}>
+          <ToggleBtn
+            active={viewMode === 'month'}
+            onClick={() => onSetViewMode('month')}
+            color={theme.color}
+          >
+            MONTH
+          </ToggleBtn>
+          <ToggleBtn
+            active={viewMode === 'agenda'}
+            onClick={() => onSetViewMode('agenda')}
+            color={theme.color}
+          >
+            AGENDA
+          </ToggleBtn>
         </div>
       </div>
     </header>
@@ -113,6 +164,26 @@ function NavBtn({ onClick, children, ...rest }) {
         lineHeight: 1,
       }}
       {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ToggleBtn({ active, onClick, color, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '6px 16px',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 10,
+        letterSpacing: '0.2em',
+        borderRadius: 3,
+        background: active ? `${color}28` : 'transparent',
+        color: active ? color : 'var(--text-muted)',
+        transition: 'all 0.15s ease',
+      }}
     >
       {children}
     </button>
