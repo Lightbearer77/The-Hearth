@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { GOALS, fmtGreekLong, fmtGregLong } from '../constants.js';
+import { GOALS, fmtGreekLong, fmtGregLong, gregToGreek } from '../constants.js';
 
 export default function EventModal({ event, onSave, onDelete, onClose }) {
   const [form, setForm] = useState(event);
+  const [showEndDate, setShowEndDate] = useState(!!event.endDate);
   const isNew = !event.title && event.createdAt && (Date.now() - event.createdAt < 5000);
 
   const update = (field, value) => setForm(f => ({ ...f, [field]: value }));
@@ -12,12 +13,25 @@ export default function EventModal({ event, onSave, onDelete, onClose }) {
       alert('Title required.');
       return;
     }
-    onSave(form);
+    if (!form.date) {
+      alert('Date required.');
+      return;
+    }
+    // Strip endDate if hidden or invalid
+    const finalForm = { ...form };
+    if (!showEndDate || !finalForm.endDate || finalForm.endDate < finalForm.date) {
+      finalForm.endDate = '';
+    }
+    onSave(finalForm);
   };
 
   const handleDelete = () => {
     if (confirm('Delete this event?')) onDelete(form.id);
   };
+
+  // Greek labels for the date fields
+  const startGreek = form.date ? gregToGreek(form.date) : null;
+  const endGreek = form.endDate ? gregToGreek(form.endDate) : null;
 
   return (
     <div style={{
@@ -86,31 +100,93 @@ export default function EventModal({ event, onSave, onDelete, onClose }) {
           />
         </Field>
 
-        {/* Date display (read-only for v1) */}
-        <Field label="Date">
-          <div style={{
-            padding: '10px 12px',
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 4,
-            fontFamily: 'var(--font-body)',
-            fontSize: 14,
-            color: 'var(--text-primary)',
-          }}>
+        {/* Start date (editable) */}
+        <Field label={showEndDate ? "Start Date" : "Date"}>
+          <input
+            type="date"
+            value={form.date}
+            onChange={e => update('date', e.target.value)}
+            style={{
+              background: 'var(--bg-surface)',
+              padding: '11px 12px',
+            }}
+          />
+          {startGreek && (
             <div style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 18,
-              fontWeight: 500,
-            }}>{fmtGreekLong(form.date)}</div>
-            <div style={{
+              fontSize: 13,
+              fontStyle: 'italic',
+              color: 'var(--text-muted)',
+              marginTop: 4,
+              paddingLeft: 2,
+            }}>
+              {startGreek.isPlanningDay
+                ? 'Planning Day'
+                : `${startGreek.monthName} ${startGreek.day}`}
+            </div>
+          )}
+        </Field>
+
+        {/* End date toggle + field */}
+        {!showEndDate ? (
+          <button
+            onClick={() => setShowEndDate(true)}
+            style={{
               fontFamily: 'var(--font-mono)',
               fontSize: 10,
+              letterSpacing: '0.2em',
               color: 'var(--text-muted)',
-              marginTop: 2,
-              letterSpacing: '0.08em',
-            }}>{fmtGregLong(form.date)}</div>
-          </div>
-        </Field>
+              padding: '6px 0 16px',
+            }}
+          >
+            + ADD END DATE
+          </button>
+        ) : (
+          <Field label="End Date">
+            <input
+              type="date"
+              value={form.endDate || ''}
+              onChange={e => update('endDate', e.target.value)}
+              min={form.date}
+              style={{
+                background: 'var(--bg-surface)',
+                padding: '11px 12px',
+              }}
+            />
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 4,
+              paddingLeft: 2,
+            }}>
+              {endGreek ? (
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 13,
+                  fontStyle: 'italic',
+                  color: 'var(--text-muted)',
+                }}>
+                  {endGreek.isPlanningDay
+                    ? 'Planning Day'
+                    : `${endGreek.monthName} ${endGreek.day}`}
+                </div>
+              ) : <span />}
+              <button
+                onClick={() => { setShowEndDate(false); update('endDate', ''); }}
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 9,
+                  letterSpacing: '0.15em',
+                  color: 'var(--text-faint)',
+                  padding: '2px 4px',
+                }}
+              >
+                REMOVE
+              </button>
+            </div>
+          </Field>
+        )}
 
         {/* All-day toggle + times */}
         <Field label="Time">
@@ -155,7 +231,6 @@ export default function EventModal({ event, onSave, onDelete, onClose }) {
           )}
         </Field>
 
-        {/* Location */}
         <Field label="Location">
           <input
             value={form.location}
@@ -164,7 +239,6 @@ export default function EventModal({ event, onSave, onDelete, onClose }) {
           />
         </Field>
 
-        {/* Description */}
         <Field label="Description">
           <textarea
             value={form.description}
@@ -174,7 +248,6 @@ export default function EventModal({ event, onSave, onDelete, onClose }) {
           />
         </Field>
 
-        {/* Goal tag */}
         <Field label="Tag">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {Object.keys(GOALS).map(g => (
@@ -198,7 +271,6 @@ export default function EventModal({ event, onSave, onDelete, onClose }) {
           </div>
         </Field>
 
-        {/* Delete (only for existing events) */}
         {!isNew && (
           <button
             onClick={handleDelete}
