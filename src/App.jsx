@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   gregToGreek,
   greekMonthRange,
@@ -8,12 +8,16 @@ import {
   GREEK_MONTHS,
   todayISO,
 } from './constants.js';
-import { loadState, saveState, newEvent, eventsForDate } from './storage.js';
+import {
+  loadState, saveState, newEvent, eventsForDate,
+  newCategory, categoryById,
+} from './storage.js';
 import MonthView from './components/MonthView.jsx';
 import AgendaView from './components/AgendaView.jsx';
 import EventModal from './components/EventModal.jsx';
 import DayDetail from './components/DayDetail.jsx';
 import SeasonalBanner from './components/SeasonalBanner.jsx';
+import SettingsPanel from './components/SettingsPanel.jsx';
 
 export default function App() {
   const [state, setState] = useState(() => loadState());
@@ -21,15 +25,32 @@ export default function App() {
     const today = gregToGreek(todayISO()) || { monthId: 'M01', year: new Date().getFullYear() };
     return { monthId: today.monthId, year: today.year };
   });
-  const [viewMode, setViewMode] = useState('month'); // 'month' | 'agenda'
+  const [viewMode, setViewMode]       = useState('month');
   const [selectedDate, setSelectedDate] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // ─── Swipe handling ───
+  const swipeStart = useRef(null);
+  const swipeEl    = useRef(null);
+
+  const handleTouchStart = (e) => {
+    swipeStart.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e) => {
+    if (swipeStart.current === null) return;
+    const dx = e.changedTouches[0].clientX - swipeStart.current;
+    swipeStart.current = null;
+    if (Math.abs(dx) < 50) return;           // ignore tiny drags
+    if (dx < 0) setView(v => nextGreekMonth(v.monthId, v.year));
+    else         setView(v => prevGreekMonth(v.monthId, v.year));
+  };
 
   useEffect(() => { saveState(state); }, [state]);
 
   // ─── Navigation ───
-  const goPrev = () => setView(v => prevGreekMonth(v.monthId, v.year));
-  const goNext = () => setView(v => nextGreekMonth(v.monthId, v.year));
+  const goPrev  = () => setView(v => prevGreekMonth(v.monthId, v.year));
+  const goNext  = () => setView(v => nextGreekMonth(v.monthId, v.year));
   const goToday = () => {
     const t = gregToGreek(todayISO());
     if (t) setView({ monthId: t.monthId, year: t.year });
@@ -38,9 +59,9 @@ export default function App() {
   // ─── Event CRUD ───
   const saveEvent = useCallback((evt) => {
     setState(s => {
-      const existing = s.events.findIndex(e => e.id === evt.id);
-      const events = existing >= 0
-        ? s.events.map((e, i) => i === existing ? evt : e)
+      const idx = s.events.findIndex(e => e.id === evt.id);
+      const events = idx >= 0
+        ? s.events.map((e, i) => i === idx ? evt : e)
         : [...s.events, evt];
       return { ...s, events };
     });
@@ -56,7 +77,36 @@ export default function App() {
     setEditingEvent(newEvent({ date: isoDate }));
   };
 
-  // ─── Derived month metadata ───
+  // ─── Category CRUD ───
+  const saveCategory = useCallback((cat) => {
+    setState(s => {
+      const idx = s.categories.findIndex(c => c.id === cat.id);
+      const categories = idx >= 0
+        ? s.categories.map((c, i) => i === idx ? cat : c)
+        : [...s.categories, cat];
+      return { ...s, categories };
+    });
+  }, []);
+
+  const deleteCategory = useCallback((id) => {
+    setState(s => ({
+      ...s,
+      categories: s.categories.filter(c => c.id !== id),
+      // Re-assign events from deleted category to first remaining
+      events: s.events.map(e =>
+        e.categoryId === id
+          ? { ...e, categoryId: s.categories.filter(c => c.id !== id)[0]?.id || 'G1' }
+          : e
+      ),
+    }));
+  }, []);
+
+  const addCategory = useCallback(() => {
+    const cat = newCategory();
+    setState(s => ({ ...s, categories: [...s.categories, cat] }));
+  }, []);
+
+  // ─── Derived ───
   const monthMeta = useMemo(() => {
     if (view.monthId === 'PLANNING') {
       return {
@@ -80,7 +130,12 @@ export default function App() {
     : [];
 
   return (
-    <div style={{ position: 'relative', zIndex: 2, paddingBottom: 80 }}>
+    <div
+      ref={swipeEl}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      style={{ position: 'relative', zIndex: 2, paddingBottom: 80 }}
+    >
       <SeasonalBanner
         meta={monthMeta}
         year={view.year}
@@ -89,6 +144,7 @@ export default function App() {
         onPrev={goPrev}
         onNext={goNext}
         onToday={goToday}
+        onSettings={() => setShowSettings(true)}
       />
 
       {viewMode === 'month' ? (
@@ -97,6 +153,7 @@ export default function App() {
           year={view.year}
           themeColor={monthMeta.theme.color}
           events={state.events}
+          categories={state.categories}
           onDayClick={setSelectedDate}
           today={todayISO()}
         />
@@ -106,6 +163,7 @@ export default function App() {
           year={view.year}
           themeColor={monthMeta.theme.color}
           events={state.events}
+          categories={state.categories}
           onDayClick={setSelectedDate}
           onEventClick={setEditingEvent}
           today={todayISO()}
@@ -116,6 +174,7 @@ export default function App() {
         <DayDetail
           isoDate={selectedDate}
           events={selectedDateEvents}
+          categories={state.categories}
           onClose={() => setSelectedDate(null)}
           onAdd={() => startNewEvent(selectedDate)}
           onEdit={(evt) => setEditingEvent(evt)}
@@ -125,9 +184,20 @@ export default function App() {
       {editingEvent && (
         <EventModal
           event={editingEvent}
+          categories={state.categories}
           onSave={saveEvent}
           onDelete={deleteEvent}
           onClose={() => setEditingEvent(null)}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsPanel
+          categories={state.categories}
+          onSave={saveCategory}
+          onDelete={deleteCategory}
+          onAdd={addCategory}
+          onClose={() => setShowSettings(false)}
         />
       )}
 
@@ -148,9 +218,8 @@ function Footer() {
       letterSpacing: '0.15em',
       textAlign: 'center',
       pointerEvents: 'none',
-      zIndex: 0,
     }}>
-      THE&nbsp;HEARTH&nbsp;·&nbsp;v0.2
+      THE&nbsp;HEARTH&nbsp;·&nbsp;v0.3
     </div>
   );
 }
