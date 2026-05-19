@@ -1,18 +1,13 @@
 import { useMemo } from 'react';
 import {
-  greekMonthDays,
-  gregToGreek,
-  fmtGreg,
-  dayOfWeek,
-  GOALS,
+  greekMonthDays, gregToGreek, fmtGreg,
+  dayOfWeek, prevGreekMonth, nextGreekMonth,
+  greekToGreg, GREEK_MONTHS,
 } from '../constants.js';
 import { ASATRU_HOLIDAYS, remindersForDate } from '../holidays.js';
-import { eventsForDate } from '../storage.js';
+import { eventsForDate, categoryById } from '../storage.js';
 
-// Greek month grid:
-// - Regular month = 28 days, aligned to actual day-of-week (Mon-first)
-// - Planning Day = 1 cell (or 2 in leap years)
-export default function MonthView({ monthId, year, themeColor, events, onDayClick, today }) {
+export default function MonthView({ monthId, year, themeColor, events, categories, onDayClick, today }) {
   const days = useMemo(() => greekMonthDays(monthId, year), [monthId, year]);
 
   if (monthId === 'PLANNING') {
@@ -23,6 +18,7 @@ export default function MonthView({ monthId, year, themeColor, events, onDayClic
             key={d}
             isoDate={d}
             events={eventsForDate(events, d)}
+            categories={categories}
             isToday={d === today}
             themeColor={themeColor}
             year={year}
@@ -33,15 +29,27 @@ export default function MonthView({ monthId, year, themeColor, events, onDayClic
     );
   }
 
+  // Build the main grid
   const startDow = dayOfWeek(days[0]);
   const dowToCol = (dow) => (dow + 6) % 7;
-  const leadingBlanks = dowToCol(startDow);
+  const leadingCount = dowToCol(startDow);
+  const trailingCount = (7 - ((days.length + leadingCount) % 7)) % 7;
+
+  // Ghost days from previous Greek month
+  const prevMonth = prevGreekMonth(monthId, year);
+  const prevDays = greekMonthDays(prevMonth.monthId, prevMonth.year);
+  const leadingGhosts = prevDays.slice(-leadingCount);
+
+  // Ghost days from next Greek month
+  const nextMonth = nextGreekMonth(monthId, year);
+  const nextDays = greekMonthDays(nextMonth.monthId, nextMonth.year);
+  const trailingGhosts = nextDays.slice(0, trailingCount);
 
   const cells = [
-    ...Array(leadingBlanks).fill(null),
-    ...days,
+    ...leadingGhosts.map(iso => ({ iso, ghost: true })),
+    ...days.map(iso => ({ iso, ghost: false })),
+    ...trailingGhosts.map(iso => ({ iso, ghost: true })),
   ];
-  while (cells.length % 7 !== 0) cells.push(null);
 
   return (
     <div style={{ padding: '12px 8px 24px' }}>
@@ -51,18 +59,18 @@ export default function MonthView({ monthId, year, themeColor, events, onDayClic
         gridTemplateColumns: 'repeat(7, 1fr)',
         gap: 2,
       }}>
-        {cells.map((iso, i) => (
-          iso === null
-            ? <div key={`blank-${i}`} style={{ aspectRatio: '1/1.15' }} />
-            : <DayCell
-                key={iso}
-                isoDate={iso}
-                events={eventsForDate(events, iso)}
-                isToday={iso === today}
-                themeColor={themeColor}
-                year={year}
-                onClick={() => onDayClick(iso)}
-              />
+        {cells.map(({ iso, ghost }, i) => (
+          <DayCell
+            key={`${iso}-${ghost ? 'g' : 'r'}-${i}`}
+            isoDate={iso}
+            ghost={ghost}
+            events={ghost ? [] : eventsForDate(events, iso)}
+            categories={categories}
+            isToday={!ghost && iso === today}
+            themeColor={themeColor}
+            year={year}
+            onClick={() => !ghost && onDayClick(iso)}
+          />
         ))}
       </div>
     </div>
@@ -70,7 +78,6 @@ export default function MonthView({ monthId, year, themeColor, events, onDayClic
 }
 
 function DayHeader() {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   return (
     <div style={{
       display: 'grid',
@@ -79,7 +86,7 @@ function DayHeader() {
       marginBottom: 6,
       padding: '0 2px',
     }}>
-      {days.map(d => (
+      {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
         <div key={d} style={{
           fontFamily: 'var(--font-mono)',
           fontSize: 9,
@@ -95,8 +102,6 @@ function DayHeader() {
   );
 }
 
-// Classify each event for this day as: 'single' | 'start' | 'middle' | 'end'
-// so the grid can render multi-day events as continuous-looking bars.
 function classifyEvent(event, isoDate) {
   if (!event.endDate || event.endDate === event.date) return 'single';
   if (isoDate === event.date) return 'start';
@@ -104,24 +109,24 @@ function classifyEvent(event, isoDate) {
   return 'middle';
 }
 
-function DayCell({ isoDate, events, isToday, themeColor, year, onClick }) {
+function DayCell({ isoDate, ghost, events, categories, isToday, themeColor, year, onClick }) {
   const greek = gregToGreek(isoDate);
-  const holidays = ASATRU_HOLIDAYS.filter(
+  const holidays = ghost ? [] : ASATRU_HOLIDAYS.filter(
     h => h.greekMonth === greek?.monthId && h.greekDay === greek?.day
   );
-  const reminders = remindersForDate(isoDate, year);
+  const reminders = ghost ? [] : remindersForDate(isoDate, year);
   const hasHoliday = holidays.length > 0;
   const hasReminder = reminders.length > 0 && !hasHoliday;
-  const gregDay = new Date(isoDate + 'T12:00:00').getDate();
 
   const primaryHoliday = hasHoliday
     ? (holidays.find(h => h.type !== 'remembrance') || holidays[0])
     : null;
   const isRemembrance = primaryHoliday?.type === 'remembrance';
 
-  // Split events into multi-day vs single-day for distinct rendering
-  const multiDay = events.filter(e => e.endDate && e.endDate > e.date);
-  const singleDay = events.filter(e => !e.endDate || e.endDate <= e.date);
+  const multiDay   = events.filter(e => e.endDate && e.endDate > e.date);
+  const singleDay  = events.filter(e => !e.endDate || e.endDate <= e.date);
+
+  const gregDay = new Date(isoDate + 'T12:00:00').getDate();
 
   return (
     <button
@@ -129,29 +134,38 @@ function DayCell({ isoDate, events, isToday, themeColor, year, onClick }) {
       style={{
         position: 'relative',
         aspectRatio: '1/1.15',
-        background: isToday ? `${themeColor}24` : 'var(--bg-surface)',
-        border: isToday ? `1px solid ${themeColor}` : '1px solid var(--border-subtle)',
+        background: ghost
+          ? 'transparent'
+          : isToday
+            ? `${themeColor}20`
+            : 'var(--bg-surface)',
+        border: ghost
+          ? '1px solid transparent'
+          : isToday
+            ? `1px solid ${themeColor}`
+            : '1px solid var(--border-subtle)',
         borderRadius: 3,
         padding: 4,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'stretch',
         textAlign: 'left',
-        transition: 'background 0.15s ease',
         overflow: 'hidden',
+        cursor: ghost ? 'default' : 'pointer',
       }}
     >
-      {hasReminder && (
+      {/* Reminder dot */}
+      {hasReminder && !ghost && (
         <span style={{
-          position: 'absolute',
-          top: 3, right: 3,
+          position: 'absolute', top: 3, right: 3,
           width: 4, height: 4,
           borderRadius: '50%',
           background: 'var(--text-muted)',
-          opacity: 0.6,
+          opacity: 0.5,
         }} />
       )}
 
+      {/* Day number — Greek primary, Gregorian secondary */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -160,82 +174,73 @@ function DayCell({ isoDate, events, isToday, themeColor, year, onClick }) {
       }}>
         <span style={{
           fontFamily: 'var(--font-display)',
-          fontSize: 17,
-          fontWeight: 500,
-          color: isToday ? themeColor : 'var(--text-primary)',
+          fontSize: ghost ? 14 : 17,
+          fontWeight: ghost ? 400 : 500,
+          color: ghost
+            ? 'var(--text-faint)'
+            : isToday
+              ? themeColor
+              : 'var(--text-primary)',
           lineHeight: 1,
+          opacity: ghost ? 0.5 : 1,
         }}>
-          {greek?.day}
+          {ghost
+            ? gregDay   // ghost cells show Gregorian day for context
+            : greek?.day}
         </span>
-        <span style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 9,
-          color: 'var(--text-faint)',
-          lineHeight: 1,
-        }}>
-          {gregDay}
-        </span>
+        {!ghost && (
+          <span style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 8,
+            color: 'var(--text-faint)',
+            lineHeight: 1,
+          }}>
+            {gregDay}
+          </span>
+        )}
       </div>
 
-      {primaryHoliday && (
+      {/* Holiday symbol */}
+      {primaryHoliday && !ghost && (
         <div style={{
-          fontSize: isRemembrance ? 13 : 11,
+          fontSize: isRemembrance ? 12 : 11,
           color: isRemembrance ? 'var(--text-secondary)' : themeColor,
           textAlign: 'center',
           marginTop: 2,
-          opacity: isRemembrance ? 0.75 : 0.9,
+          opacity: isRemembrance ? 0.7 : 0.9,
           fontFamily: isRemembrance ? 'var(--font-mono)' : 'inherit',
-          letterSpacing: isRemembrance ? '0.05em' : 0,
         }}>
           {primaryHoliday.symbol}
           {holidays.length > 1 && (
-            <span style={{
-              fontSize: 7,
-              marginLeft: 2,
-              color: 'var(--text-faint)',
-              verticalAlign: 'top',
-            }}>+{holidays.length - 1}</span>
+            <span style={{ fontSize: 7, marginLeft: 2, color: 'var(--text-faint)', verticalAlign: 'top' }}>
+              +{holidays.length - 1}
+            </span>
           )}
         </div>
       )}
 
-      {/* Multi-day event bars (rendered above the dots so they read as ranges) */}
+      {/* Multi-day event bars */}
       {multiDay.length > 0 && (
-        <div style={{
-          marginTop: 'auto',
-          marginBottom: singleDay.length > 0 ? 2 : 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 1,
-        }}>
+        <div style={{ marginTop: 'auto', marginBottom: singleDay.length > 0 ? 2 : 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
           {multiDay.slice(0, 2).map(e => {
             const pos = classifyEvent(e, isoDate);
-            const color = GOALS[e.goal]?.color || 'var(--text-muted)';
+            const color = categoryById(categories, e.categoryId)?.color || 'var(--text-muted)';
             return (
-              <span
-                key={e.id}
-                style={{
-                  height: 3,
-                  background: `${color}cc`,
-                  marginLeft: pos === 'start' || pos === 'single' ? 2 : -2,
-                  marginRight: pos === 'end' || pos === 'single' ? 2 : -2,
-                  borderRadius: pos === 'single' ? 2 : 0,
-                  borderTopLeftRadius: pos === 'start' ? 2 : 0,
-                  borderBottomLeftRadius: pos === 'start' ? 2 : 0,
-                  borderTopRightRadius: pos === 'end' ? 2 : 0,
-                  borderBottomRightRadius: pos === 'end' ? 2 : 0,
-                }}
-              />
+              <span key={e.id} style={{
+                height: 3,
+                background: `${color}cc`,
+                marginLeft: pos === 'start' || pos === 'single' ? 2 : -2,
+                marginRight: pos === 'end'   || pos === 'single' ? 2 : -2,
+                borderRadius: pos === 'single' ? 2
+                  : pos === 'start' ? '2px 0 0 2px'
+                  : pos === 'end'   ? '0 2px 2px 0' : 0,
+              }} />
             );
           })}
           {multiDay.length > 2 && (
-            <span style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 7,
-              color: 'var(--text-muted)',
-              textAlign: 'center',
-              lineHeight: 1,
-            }}>+{multiDay.length - 2}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: 'var(--text-muted)', textAlign: 'center' }}>
+              +{multiDay.length - 2}
+            </span>
           )}
         </div>
       )}
@@ -254,15 +259,13 @@ function DayCell({ isoDate, events, isToday, themeColor, year, onClick }) {
             <span key={e.id} style={{
               width: 5, height: 5,
               borderRadius: '50%',
-              background: GOALS[e.goal]?.color || 'var(--text-muted)',
+              background: categoryById(categories, e.categoryId)?.color || 'var(--text-muted)',
             }} />
           ))}
           {singleDay.length > 4 && (
-            <span style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 8,
-              color: 'var(--text-muted)',
-            }}>+{singleDay.length - 4}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-muted)' }}>
+              +{singleDay.length - 4}
+            </span>
           )}
         </div>
       )}
@@ -270,13 +273,11 @@ function DayCell({ isoDate, events, isToday, themeColor, year, onClick }) {
   );
 }
 
-function PlanningCell({ isoDate, events, isToday, themeColor, year, onClick }) {
-  const reminders = remindersForDate(isoDate, year);
+function PlanningCell({ isoDate, events, categories, isToday, themeColor, year, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
-        position: 'relative',
         width: '100%',
         background: `linear-gradient(135deg, ${themeColor}15, transparent)`,
         border: `1px solid ${themeColor}`,
@@ -289,44 +290,13 @@ function PlanningCell({ isoDate, events, isToday, themeColor, year, onClick }) {
         marginBottom: 12,
       }}
     >
-      {reminders.length > 0 && (
-        <span style={{
-          position: 'absolute',
-          top: 8, right: 10,
-          width: 5, height: 5,
-          borderRadius: '50%',
-          background: 'var(--text-muted)',
-          opacity: 0.6,
-        }} />
-      )}
-      <div style={{
-        fontFamily: 'var(--font-display)',
-        fontSize: 36,
-        color: themeColor,
-      }}>✦</div>
-      <div style={{
-        fontFamily: 'var(--font-display)',
-        fontSize: 20,
-        color: 'var(--text-primary)',
-      }}>
-        Planning Day
-      </div>
-      <div style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: 11,
-        color: 'var(--text-muted)',
-        letterSpacing: '0.1em',
-      }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 36, color: themeColor }}>✦</div>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: 'var(--text-primary)' }}>Planning Day</div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', letterSpacing: '0.1em' }}>
         {fmtGreg(isoDate)}
       </div>
       {events.length > 0 && (
-        <div style={{
-          fontFamily: 'var(--font-body)',
-          fontStyle: 'italic',
-          fontSize: 12,
-          color: 'var(--text-secondary)',
-          marginTop: 6,
-        }}>
+        <div style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', fontSize: 12, color: 'var(--text-secondary)' }}>
           {events.length} event{events.length === 1 ? '' : 's'}
         </div>
       )}
