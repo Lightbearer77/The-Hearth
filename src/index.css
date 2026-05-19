@@ -1,34 +1,36 @@
 :root {
-  /* Core palette — warm dark parchment */
-  --bg-deep: #1a1612;
-  --bg-surface: #252019;
-  --bg-elevated: #2d2820;
-  --bg-overlay: rgba(26, 22, 18, 0.92);
+  /* ─── Core palette — warmer dark with clear contrast tiers ─── */
+  --bg-deep:     #16120e;
+  --bg-surface:  #1e1910;
+  --bg-elevated: #262014;
+  --bg-hover:    #2e271a;
+  --bg-overlay:  rgba(16, 12, 8, 0.94);
 
-  /* Text */
-  --text-primary: #e8e0d0;
-  --text-secondary: #b8ad99;
-  --text-muted: #7a7060;
-  --text-faint: #4a443a;
+  /* ─── Text — four clear tiers, no blending ─── */
+  --text-primary:   #ede4d4;   /* warm near-white — main content */
+  --text-secondary: #c4b49a;   /* warm tan — labels, subtitles */
+  --text-muted:     #8a7a62;   /* mid tone — metadata, timestamps */
+  --text-faint:     #50463a;   /* dark — ornaments, dividers, ghost days */
 
-  /* Borders */
-  --border-subtle: #3a342c;
-  --border-strong: #4a443a;
+  /* ─── Borders — three steps ─── */
+  --border-subtle: #2e271a;
+  --border-mid:    #3e3628;
+  --border-strong: #504638;
 
-  /* Accent — burnished gold (matches The Forge G1) */
-  --accent: #c9a84c;
+  /* ─── Accent — burnished gold ─── */
+  --accent:     #c9a84c;
   --accent-dim: #8a7234;
 
-  /* Goal colors (matches The Forge) */
+  /* ─── Goal colors (stable — matches The Forge) ─── */
   --g1: #c9a84c;
   --g2: #5b8a72;
   --g3: #8b4a4a;
   --g4: #4a6a8b;
 
-  /* Typography */
+  /* ─── Typography ─── */
   --font-display: 'Cormorant Garamond', Georgia, serif;
-  --font-body: 'Spectral', Georgia, serif;
-  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-body:    'Spectral', Georgia, serif;
+  --font-mono:    'JetBrains Mono', 'Courier New', monospace;
 }
 
 * {
@@ -42,11 +44,9 @@ html, body {
   background: var(--bg-deep);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-weight: 400;
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
   min-height: 100vh;
 }
@@ -56,14 +56,14 @@ html, body {
   position: relative;
 }
 
-/* Subtle parchment noise overlay */
+/* Subtle parchment noise */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.03;
+  opacity: 0.025;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' /%3E%3C/svg%3E");
 }
 
@@ -79,7 +79,7 @@ button {
 input, textarea, select {
   font-family: inherit;
   background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-mid);
   color: var(--text-primary);
   padding: 10px 12px;
   border-radius: 4px;
@@ -99,43 +99,52 @@ textarea {
   font-family: var(--font-body);
 }
 
-/* Hide number input spinners */
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
-  margin: 0;
+}
+
+input[type='color'] {
+  padding: 2px 4px;
+  height: 36px;
+  cursor: pointer;
 }
 
 /* Scrollbars */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
-/* Utility: ornamental divider */
+/* Ornamental divider */
 .divider-ornament {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-faint);
-  font-size: 10px;
-  letter-spacing: 0.4em;
+  font-size: 9px;
+  letter-spacing: 0.35em;
   margin: 8px 0;
+  font-family: var(--font-mono);
 }
-
 .divider-ornament::before,
 .divider-ornament::after {
   content: '';
   flex: 1;
   height: 1px;
   background: var(--border-subtle);
-  margin: 0 12px;
+  margin: 0 10px;
 }
 
-/* Fade-in animation */
+/* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
 }
 
-.fade-in { animation: fadeIn 0.25s ease-out; }
+.fade-in  { animation: fadeIn  0.2s ease-out; }
+.slide-up { animation: slideUp 0.25s ease-out; }
