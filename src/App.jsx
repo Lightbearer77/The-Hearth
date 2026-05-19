@@ -10,21 +10,21 @@ import {
 } from './constants.js';
 import { loadState, saveState, newEvent, eventsForDate } from './storage.js';
 import MonthView from './components/MonthView.jsx';
+import AgendaView from './components/AgendaView.jsx';
 import EventModal from './components/EventModal.jsx';
 import DayDetail from './components/DayDetail.jsx';
 import SeasonalBanner from './components/SeasonalBanner.jsx';
 
 export default function App() {
-  // ─── State ───
   const [state, setState] = useState(() => loadState());
   const [view, setView] = useState(() => {
     const today = gregToGreek(todayISO()) || { monthId: 'M01', year: new Date().getFullYear() };
     return { monthId: today.monthId, year: today.year };
   });
-  const [selectedDate, setSelectedDate] = useState(null);  // ISO date for day detail
-  const [editingEvent, setEditingEvent] = useState(null);  // event obj or null
+  const [viewMode, setViewMode] = useState('month'); // 'month' | 'agenda'
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [editingEvent, setEditingEvent] = useState(null);
 
-  // Persist on every state change
   useEffect(() => { saveState(state); }, [state]);
 
   // ─── Navigation ───
@@ -56,7 +56,7 @@ export default function App() {
     setEditingEvent(newEvent({ date: isoDate }));
   };
 
-  // ─── Derived ───
+  // ─── Derived month metadata ───
   const monthMeta = useMemo(() => {
     if (view.monthId === 'PLANNING') {
       return {
@@ -79,25 +79,38 @@ export default function App() {
     ? eventsForDate(state.events, selectedDate)
     : [];
 
-  // ─── Render ───
   return (
     <div style={{ position: 'relative', zIndex: 2, paddingBottom: 80 }}>
       <SeasonalBanner
         meta={monthMeta}
         year={view.year}
+        viewMode={viewMode}
+        onSetViewMode={setViewMode}
         onPrev={goPrev}
         onNext={goNext}
         onToday={goToday}
       />
 
-      <MonthView
-        monthId={view.monthId}
-        year={view.year}
-        themeColor={monthMeta.theme.color}
-        events={state.events}
-        onDayClick={setSelectedDate}
-        today={todayISO()}
-      />
+      {viewMode === 'month' ? (
+        <MonthView
+          monthId={view.monthId}
+          year={view.year}
+          themeColor={monthMeta.theme.color}
+          events={state.events}
+          onDayClick={setSelectedDate}
+          today={todayISO()}
+        />
+      ) : (
+        <AgendaView
+          monthId={view.monthId}
+          year={view.year}
+          themeColor={monthMeta.theme.color}
+          events={state.events}
+          onDayClick={setSelectedDate}
+          onEventClick={setEditingEvent}
+          today={todayISO()}
+        />
+      )}
 
       {selectedDate && (
         <DayDetail
@@ -137,7 +150,7 @@ function Footer() {
       pointerEvents: 'none',
       zIndex: 0,
     }}>
-      THE&nbsp;HEARTH&nbsp;·&nbsp;v0.1
+      THE&nbsp;HEARTH&nbsp;·&nbsp;v0.2
     </div>
   );
 }
