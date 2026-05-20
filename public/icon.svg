@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Warm dark background -->
+  <rect width="512" height="512" fill="#16120e"/>
+
+  <!-- Soft glow halo behind the flame -->
+  <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0%"   stop-color="#c9a84c" stop-opacity="0.45"/>
+    <stop offset="60%"  stop-color="#c9a84c" stop-opacity="0.10"/>
+    <stop offset="100%" stop-color="#c9a84c" stop-opacity="0"/>
+  </radialGradient>
+  <circle cx="256" cy="240" r="180" fill="url(#glow)"/>
+
+  <!-- Outer flame — tapered teardrop, slight asymmetry -->
+  <path d="M 256 105
+           C 230 165, 184 200, 184 270
+           C 184 332, 220 365, 256 365
+           C 292 365, 328 332, 328 270
+           C 328 200, 282 165, 256 105 Z"
+        fill="#c9a84c"/>
+
+  <!-- Inner flame — brighter core -->
+  <path d="M 256 170
+           C 242 210, 222 230, 222 275
+           C 222 310, 240 330, 256 330
+           C 272 330, 290 310, 290 275
+           C 290 230, 270 210, 256 170 Z"
+        fill="#ede4d4"
+        opacity="0.85"/>
+
+  <!-- Hearth base line — split into two segments suggesting an opening -->
+  <rect x="120" y="395" width="115" height="6" rx="2" fill="#c9a84c"/>
+  <rect x="277" y="395" width="115" height="6" rx="2" fill="#c9a84c"/>
+
+  <!-- Small ember dots beneath -->
+  <circle cx="256" cy="398" r="3.5" fill="#c9a84c"/>
+</svg>
