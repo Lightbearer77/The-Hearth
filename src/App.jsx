@@ -10,14 +10,16 @@ import {
 } from './constants.js';
 import {
   loadState, saveState, newEvent, eventsForDate,
-  newCategory, categoryById,
+  newCategory,
 } from './storage.js';
+import { checkAndFireReminders } from './notifications.js';
 import MonthView from './components/MonthView.jsx';
 import AgendaView from './components/AgendaView.jsx';
 import EventModal from './components/EventModal.jsx';
 import DayDetail from './components/DayDetail.jsx';
 import SeasonalBanner from './components/SeasonalBanner.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
+import InstallPrompt from './components/InstallPrompt.jsx';
 
 export default function App() {
   const [state, setState] = useState(() => loadState());
@@ -32,21 +34,30 @@ export default function App() {
 
   // ─── Swipe handling ───
   const swipeStart = useRef(null);
-  const swipeEl    = useRef(null);
-
-  const handleTouchStart = (e) => {
-    swipeStart.current = e.touches[0].clientX;
-  };
+  const handleTouchStart = (e) => { swipeStart.current = e.touches[0].clientX; };
   const handleTouchEnd = (e) => {
     if (swipeStart.current === null) return;
     const dx = e.changedTouches[0].clientX - swipeStart.current;
     swipeStart.current = null;
-    if (Math.abs(dx) < 50) return;           // ignore tiny drags
+    if (Math.abs(dx) < 50) return;
     if (dx < 0) setView(v => nextGreekMonth(v.monthId, v.year));
     else         setView(v => prevGreekMonth(v.monthId, v.year));
   };
 
   useEffect(() => { saveState(state); }, [state]);
+
+  // ─── Notification check on app open + when tab becomes visible ───
+  useEffect(() => {
+    checkAndFireReminders().catch(() => {});
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndFireReminders().catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   // ─── Navigation ───
   const goPrev  = () => setView(v => prevGreekMonth(v.monthId, v.year));
@@ -92,7 +103,6 @@ export default function App() {
     setState(s => ({
       ...s,
       categories: s.categories.filter(c => c.id !== id),
-      // Re-assign events from deleted category to first remaining
       events: s.events.map(e =>
         e.categoryId === id
           ? { ...e, categoryId: s.categories.filter(c => c.id !== id)[0]?.id || 'G1' }
@@ -131,7 +141,6 @@ export default function App() {
 
   return (
     <div
-      ref={swipeEl}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       style={{ position: 'relative', zIndex: 2, paddingBottom: 80 }}
@@ -201,6 +210,8 @@ export default function App() {
         />
       )}
 
+      <InstallPrompt />
+
       <Footer />
     </div>
   );
@@ -219,7 +230,7 @@ function Footer() {
       textAlign: 'center',
       pointerEvents: 'none',
     }}>
-      THE&nbsp;HEARTH&nbsp;·&nbsp;v0.3
+      THE&nbsp;HEARTH&nbsp;·&nbsp;v0.4
     </div>
   );
 }
